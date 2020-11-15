@@ -9,7 +9,7 @@
 
 import sys
 import socket
-import sniffer_tools
+from tools import sniffer_tools
 
 # TODO: Possibly add in automatic interface detection -> list, allow user to choose at runtime
 linux_interface = 'enp0s8'  # From Ubuntu VM
@@ -47,7 +47,7 @@ def main():
             )
 
             if packet_details['data']:
-                print(packet_details['data'])
+                print(f'Packet Payload:\n{packet_details["data"]}')
             print("#############################################################################")
 
         # input()  # Allows us to look at one packet at a time; comment out for lightspeed

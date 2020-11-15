@@ -10,6 +10,7 @@
 import socket
 import binascii
 import json
+import os
 from typing import Dict
 
 
@@ -123,7 +124,7 @@ def analyze_packet(packet: bytes,  beautify: bool = False) -> [Dict[str, bytes],
 
     # If it's an IPv4 packet, find the associated protocol
     if packet_info['eth_type'] == b'\x08\x00':
-        with open('ip_protocols.json') as f:
+        with open(f'{os.getcwd()}/tools/ip_protocols.json') as f:
             protocols = json.load(f)
         packet_info['protocol'] = protocols[packet_info['protocol']]['Keyword']  # convert byte to protocol type
 
