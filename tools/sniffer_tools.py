@@ -67,8 +67,8 @@ def wiresharkify(packet: bytes) -> str:
         print(f'EXCEPTION: {type(e).__name__}: {e}')
         decoded_packet = packet
     
-    # Make an empty string and define some starting variables
-    formatted = ''
+    # Make a string to append the hex characters to and define some starting variables
+    formatted = '\nWiresharkified Packet:\n\n'
     start = 0
     if len(decoded_packet) < 32:
         end = len(decoded_packet)
