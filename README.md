@@ -5,7 +5,7 @@ Linux only currently, it sorta works in Windows but not really. Will most likely
 # Examples
 Running the `sniffer.py` script as it is currently will provide the following output:  
 (Actual script output is in nice columns but not sure how to make this happen with markdown)  
->#############################################################################
+>#############################################################  
 >
 >Wiresharkified Packet:
 >
@@ -27,6 +27,6 @@ Running the `sniffer.py` script as it is currently will provide the following ou
 >Ethernet Type:&nbsp; &nbsp; &nbsp; &nbsp; 0x0800  
 >Protocol Type:&nbsp; &nbsp; &nbsp; &nbsp; TCP  
 >
->#############################################################################  
+>#############################################################  
   
 For TCP packets the script will also output an attempted translation of the data payload.
