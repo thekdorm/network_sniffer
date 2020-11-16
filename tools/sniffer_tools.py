@@ -7,33 +7,82 @@
 #
 # Author: Kyle Dormody
 
+import subprocess
 import socket
 import binascii
 import json
+import sys
 import os
-from typing import Dict
+from typing import Dict, List
+
+
+def detect_interfaces() -> List[str]:
+    """Function to attempt to detect network interfaces for binding
+    If none are found the user has the option to manually input an interface
+
+    Returns:
+        List[str]: A list of found network interfaces
+    """
+    if sys.platform == 'linux':
+        try:
+            output = subprocess.check_output(r"grep -Eo '\w*:' /proc/net/dev", shell=True)
+            interfaces = output.decode().rstrip(':\n').split(':\n')
+        except subprocess.CalledProcessError as e:
+            print(f'EXCEPTION: {type(e).__name__} raised with exit status {e.args[0]}')
+            if e.args[0] != 0:  # if the exit code of the grep command is not 0, it failed so ask for interface manually
+                interfaces = [input("Automatic interface detection failed, input an interface now: ").lower().rstrip()]
+    else:
+        interfaces = [input("Automatic interface detection failed, input an interface now: ").lower().rstrip()]
+    interfaces.sort()
+    return interfaces
+
+
+def verify_interface(interface: str) -> bool:
+    """Attempts to verify the chosen network interface
+
+    Args:
+        interface (str): The interface to verify
+
+    Returns:
+        bool: True if verified, False if not
+    """
+    # TODO: Make this section nicer, probably a better way to check ifconfig or ip commands than
+    # try/except clauses to see which one works
+    if sys.platform == 'linux':
+        try:
+            subprocess.check_output("ip addr", shell=True)
+            command = "ip link show"
+        except subprocess.CalledProcessError:
+            print("This os doesn't support the ip tool, trying ifconfig...")
+            try:
+                subprocess.check_output("ifconfig", shell=True)
+                command = "ifconfig"
+            except subprocess.CalledProcessError:
+                print("This os doesn't support the ifconfig tool, aborting!")
+                return False
+        
+        # If we've got this far then we know which tool to check the interface with
+        try:
+            subprocess.check_output(f'{command} {interface}', shell=True)
+            return True
+        except subprocess.CalledProcessError:
+            return False
 
 
 def make_listener(interface: int, socket_type: int, packet_type: int, host: str,
                   port: int, promiscuous=True) -> socket.socket:
-    """
-    This isn't necessarily useful in any way, it's more just here as a future reference.
+    """Create and bind a socket object for packet inspection
 
-    Open a socket of specified type, listening for specific packets. Refer to documentation for more on socket module.
-    When passing arguments, need to pass them as socket.ATTRIBUTE, i.e. socket.AF_UNIX, socket.SOCK_STREAM etc.
+    Args:
+        interface (int): Interface type
+        socket_type (int): Socket type
+        packet_type (int): Packet type
+        host (str): Host to bind to
+        port (int): Port to bind to
+        promiscuous (bool, optional): Snoop on all packets? Defaults to True.
 
-    Parameters
-    ----------
-    interface       AF_UNIX, AF_INET, AF_INET6
-    socket_type     SOCK_STREAM, SOCK_DGRAM, SOCK_RAW, SOCK_RDM, SOCK_SEQPACKET, SOCK_CLOEXEC, SOCK_NONBLOCK
-    packet_type     Type of packets you want to look at; use socket.htons(0x0800) or socket.IPPROTO_IP
-    host            Host name the listener will be on
-    port            Port the listener binds to
-    promiscuous     If set to True, will listen to all packets that the NIC sees (Windows mostly)
-
-    Returns         Returns a socket object
-    -------
-
+    Returns:
+        socket.socket: socket object for packet listening
     """
     s = socket.socket(interface, socket_type, packet_type)
     s.bind((host, port))
@@ -41,25 +90,22 @@ def make_listener(interface: int, socket_type: int, packet_type: int, host: str,
     # This junk doesn't do a whole lot besides from setting a Windows interface to 'promiscuous'
     # Windows strips the Ethernet II header from packets which kinda makes all this pointless
     # You can still snoop on packets though, just won't be able to get much info from them
-    #
-    # if sys.platform == 'win32':
-    #     s.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
-    #     if promiscuous is True:
-    #         s.ioctl(socket.SIO_RCVALL, socket.RCVALL_ON)
+    if sys.platform == 'win32':
+        s.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
+        if promiscuous is True:
+            s.ioctl(socket.SIO_RCVALL, socket.RCVALL_ON)
     return s
 
 
 # TODO: Work on the while loop logic. It works but could be nicer.
 def wiresharkify(packet: bytes) -> str:
-    """Basically will just take a raw packet and format it to look similar to what you'd see in Wireshark.
+    """Takes a raw packet and formats a string to look like a Wireshark packet
 
-    Parameters
-    ----------
-    packet      Packet we want to wiresharkify
+    Args:
+        packet (bytes): Raw packet to format
 
-    Returns     The returned packet that can be parsed easier
-    -------
-
+    Returns:
+        str: Formatted string, wiresharkified!
     """
     try:
         decoded_packet = binascii.hexlify(packet).decode()
@@ -99,17 +145,15 @@ def wiresharkify(packet: bytes) -> str:
     return formatted
 
 
-def analyze_packet(packet: bytes,  beautify: bool = False) -> [Dict[str, bytes], bool]:
-    """Pull out some cool information from the packet
+def analyze_packet(packet: bytes,  beautify: bool = False) -> Dict[str, str]:
+    """Pull out some interesting information from the packet
 
-    Parameters
-    ----------
-    packet      The packet we want to analyze
-    beautify    If True, converts raw hex to ASCII
+    Args:
+        packet (bytes): Raw packet
+        beautify (bool, optional): Make it pretty! Defaults to False.
 
-    Returns     [Dictionary of info, bool]
-    -------
-
+    Returns:
+        Dict[str, str]: Dictionary of info we could parse
     """
     # This logic is assuming it's an IPv4 packet, something like an ARP will probably break it
     packet_info = {
@@ -137,18 +181,15 @@ def analyze_packet(packet: bytes,  beautify: bool = False) -> [Dict[str, bytes],
 
 
 def _beautify_packet(packet: Dict[str, bytes], beautify: bool = False) -> Dict[str, str or bytes]:
-    """
-    Gets called whenever analyze_packet is called; this will either just return whatever
+    """Gets called whenever analyze_packet is called; this will either just return whatever
     analyze_packet returns if beautify = False, or convert to ASCII if beautify = True
 
-    Parameters
-    ----------
-    packet      The packet we want to analyze
-    beautify    If True, converts raw hex to ASCII
+    Args:
+        packet (Dict[str, bytes]): Packet info
+        beautify (bool, optional): Make it pretty!. Defaults to False.
 
-    Returns     [Dictionary of info, bool]
-    -------
-
+    Returns:
+        Dict[str, str or bytes]: Values will be str or bytes depending on if beautify=True
     """
     if beautify is True:
         packet['dst_mac']= ':'.join(format(s, '02X') for s in bytes.fromhex(binascii.hexlify(packet['dst_mac']).decode()))
