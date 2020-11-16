@@ -29,4 +29,4 @@ Running the `sniffer.py` script as it is currently will provide the following ou
 >
 >#############################################################  
   
-For TCP packets the script will also output an attempted translation of the data payload.
+For UDP packets the script will also output an attempted translation of the data payload.
